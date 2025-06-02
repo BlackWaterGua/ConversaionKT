@@ -21,7 +21,7 @@ const isButtonPressed = (ev: MouseEvent | TouchEvent) => {
   return false
 }
 
-const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) => {
+const GraphControl = ({ disableHoverEffect, courseId = "" }: { disableHoverEffect?: boolean; courseId?: string }) => {
   const sigma = useSigma<NodeType, EdgeType>()
   const registerEvents = useRegisterEvents<NodeType, EdgeType>()
   const setSettings = useSetSettings<NodeType, EdgeType>()

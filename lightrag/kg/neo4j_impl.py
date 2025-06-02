@@ -1155,3 +1155,72 @@ class Neo4JStorage(BaseGraphStorage):
         except Exception as e:
             logger.error(f"Error dropping Neo4j database {self._DATABASE}: {e}")
             return {"status": "error", "message": str(e)}
+
+    async def get_nodes_and_relationships_by_file_path(self, file_path: str) -> tuple[list[dict], list[dict]]:
+        """
+        獲取指定 file_path 的所有節點和關係
+
+        Args:
+            file_path (str): 文件路徑
+
+        Returns:
+            tuple[list[dict], list[dict]]: (節點列表, 關係列表)
+        """
+        nodes = []
+        relationships = []
+        
+        try:
+            async with self._driver.session(
+                database=self._DATABASE, default_access_mode="READ"
+            ) as session:
+                # 獲取所有與指定 file_path 相關的節點
+                node_query = """
+                MATCH (n:base)
+                WHERE n.file_path = $file_path
+                RETURN n
+                """
+                node_result = await session.run(node_query, file_path=file_path)
+                
+                # 處理節點
+                async for record in node_result:
+                    node = record["n"]
+                    node_dict = dict(node)
+                    if "labels" in node_dict:
+                        node_dict["labels"] = [
+                            label for label in node_dict["labels"]
+                            if label != "base"
+                        ]
+                    nodes.append(node_dict)
+                
+                await node_result.consume()
+                
+                # 獲取所有與這些節點相關的關係
+                if nodes:
+                    relationship_query = """
+                    MATCH (n:base {file_path: $file_path})-[r]-(m:base)
+                    RETURN r, n, m
+                    """
+                    relationship_result = await session.run(relationship_query, file_path=file_path)
+                    
+                    # 處理關係
+                    async for record in relationship_result:
+                        rel = record["r"]
+                        source_node = record["n"]
+                        target_node = record["m"]
+                        
+                        relationship_dict = {
+                            "id": str(rel.id),
+                            "type": rel.type,
+                            "source": source_node.get("entity_id"),
+                            "target": target_node.get("entity_id"),
+                            "properties": dict(rel)
+                        }
+                        relationships.append(relationship_dict)
+                    
+                    await relationship_result.consume()
+                
+                return nodes, relationships
+                
+        except Exception as e:
+            logger.error(f"Error getting nodes and relationships for file_path {file_path}: {str(e)}")
+            raise

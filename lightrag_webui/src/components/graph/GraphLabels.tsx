@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { RefreshCw } from 'lucide-react'
 import Button from '@/components/ui/Button'
 
-const GraphLabels = () => {
+const GraphLabels = ({ courseId = "" }: { courseId?: string }) => {
   const { t } = useTranslation()
   const label = useSettingsStore.use.queryLabel()
   const allDatabaseLabels = useGraphStore.use.allDatabaseLabels()
@@ -62,14 +62,16 @@ const GraphLabels = () => {
     // 1. allDatabaseLabels is loaded (length > 1, as it has at least '*' by default)
     // 2. Current label is not the default '*'
     // 3. Current label doesn't exist in allDatabaseLabels
+    // 移除自動重置標籤的邏輯
     if (
       allDatabaseLabels.length > 1 &&
       label &&
       label !== '*' &&
       !allDatabaseLabels.includes(label)
     ) {
-      console.log(`Label "${label}" not found in available labels, resetting to default`);
-      useSettingsStore.getState().setQueryLabel('*');
+      // console.log(`Label "${label}" not found in available labels, resetting to default`);
+      // useSettingsStore.getState().setQueryLabel('*');
+      console.log(`Label "${label}" not found in available labels`);
     }
   }, [allDatabaseLabels, label]);
 
@@ -84,6 +86,7 @@ const GraphLabels = () => {
     // Get current label
     const currentLabel = useSettingsStore.getState().queryLabel
 
+    // 重置標籤的邏輯
     // If current label is empty, use default label '*'
     if (!currentLabel) {
       useSettingsStore.getState().setQueryLabel('*')
@@ -94,7 +97,7 @@ const GraphLabels = () => {
         useSettingsStore.getState().setQueryLabel(currentLabel)
       }, 0)
     }
-  }, []);
+  }, [courseId]);
 
   return (
     <div className="flex items-center">

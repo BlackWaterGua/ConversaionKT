@@ -11,13 +11,14 @@ import pipmaster as pm
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Literal
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, Query
 from pydantic import BaseModel, Field, field_validator
 
 from lightrag import LightRAG
 from lightrag.base import DocProcessingStatus, DocStatus
 from lightrag.api.utils_api import get_combined_auth_dependency
 from ..config import global_args
+from lightrag.rag_manager import RAGManager
 
 router = APIRouter(
     prefix="/documents",
@@ -63,6 +64,7 @@ class InsertTextRequest(BaseModel):
         min_length=1,
         description="The text to insert",
     )
+    namespace: str = Field(default="", description="圖譜命名空間")
 
     @field_validator("text", mode="after")
     @classmethod
@@ -325,6 +327,27 @@ class PipelineStatusResponse(BaseModel):
         extra = "allow"  # Allow additional fields from the pipeline status
 
 
+class DocActionResponse(BaseModel):
+    """Response model for document actions
+
+    Attributes:
+        status: Status of the action ("success", "not_found", "fail")
+        message: Detailed message describing the action result
+    """
+    status: Literal["success", "not_found", "fail"] = Field(
+        description="Status of the action"
+    )
+    message: str = Field(description="Message describing the action result")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "message": "Document successfully deleted"
+            }
+        }
+
+
 class DocumentManager:
     def __init__(
         self,
@@ -486,8 +509,13 @@ async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
 
                     pdf_file = BytesIO(file)
                     reader = PdfReader(pdf_file)
+                    content = ""
                     for page in reader.pages:
-                        content += page.extract_text() + "\n"
+                        # 提取文本並移除所有換行符和空格
+                        page_text = page.extract_text()
+                        # 移除所有換行符和空格
+                        page_text = page_text.replace('\n', '').replace(' ', '')
+                        content += page_text
             case ".docx":
                 if global_args.document_loading_engine == "DOCLING":
                     if not pm.is_installed("docling"):  # type: ignore
@@ -699,7 +727,7 @@ async def run_scanning_process(rag: LightRAG, doc_manager: DocumentManager):
 
 
 def create_document_routes(
-    rag: LightRAG, doc_manager: DocumentManager, api_key: Optional[str] = None
+    rag_manager: RAGManager, doc_manager: DocumentManager, api_key: Optional[str] = None
 ):
     # Create combined auth dependency for document routes
     combined_auth = get_combined_auth_dependency(api_key)
@@ -707,18 +735,15 @@ def create_document_routes(
     @router.post(
         "/scan", response_model=ScanResponse, dependencies=[Depends(combined_auth)]
     )
-    async def scan_for_new_documents(background_tasks: BackgroundTasks):
+    async def scan_for_new_documents(
+        background_tasks: BackgroundTasks,
+        course_id: str = Query("", description="課程ID")
+        ):
         """
-        Trigger the scanning process for new documents.
-
-        This endpoint initiates a background task that scans the input directory for new documents
-        and processes them. If a scanning process is already running, it returns a status indicating
-        that fact.
-
-        Returns:
-            ScanResponse: A response object containing the scanning status
+        Scan for new documents in the input directory and start processing them.
         """
         # Start the scanning process in the background
+        rag = await rag_manager.get_rag(course_id)
         background_tasks.add_task(run_scanning_process, rag, doc_manager)
         return ScanResponse(
             status="scanning_started",
@@ -729,7 +754,9 @@ def create_document_routes(
         "/upload", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
     )
     async def upload_to_input_dir(
-        background_tasks: BackgroundTasks, file: UploadFile = File(...)
+        background_tasks: BackgroundTasks,
+        file: UploadFile = File(...),
+        course_id: str = Query("", description="課程ID")
     ):
         """
         Upload a file to the input directory and index it.
@@ -741,6 +768,7 @@ def create_document_routes(
         Args:
             background_tasks: FastAPI BackgroundTasks for async processing
             file (UploadFile): The file to be uploaded. It must have an allowed extension.
+            course_id (str): The course ID for organizing files and namespace
 
         Returns:
             InsertResponse: A response object containing the upload status and a message.
@@ -749,6 +777,7 @@ def create_document_routes(
         Raises:
             HTTPException: If the file type is not supported (400) or other errors occur (500).
         """
+        # print(f"course_id in upload: {course_id}")
         try:
             if not doc_manager.is_supported_file(file.filename):
                 raise HTTPException(
@@ -756,7 +785,8 @@ def create_document_routes(
                     detail=f"Unsupported file type. Supported types: {doc_manager.supported_extensions}",
                 )
 
-            file_path = doc_manager.input_dir / file.filename
+            # file_path = doc_manager.input_dir / file.filename
+            file_path = doc_manager.input_dir / f"{course_id}_{file.filename}"
             # Check if file already exists
             if file_path.exists():
                 return InsertResponse(
@@ -768,6 +798,7 @@ def create_document_routes(
                 shutil.copyfileobj(file.file, buffer)
 
             # Add to background tasks
+            rag = await rag_manager.get_rag(course_id)
             background_tasks.add_task(pipeline_index_file, rag, file_path)
 
             return InsertResponse(
@@ -783,7 +814,9 @@ def create_document_routes(
         "/text", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
     )
     async def insert_text(
-        request: InsertTextRequest, background_tasks: BackgroundTasks
+        request: InsertTextRequest, 
+        background_tasks: BackgroundTasks,
+        course_id: str = Query("", description="課程ID")
     ):
         """
         Insert text into the RAG system.
@@ -802,6 +835,7 @@ def create_document_routes(
             HTTPException: If an error occurs during text processing (500).
         """
         try:
+            rag = await rag_manager.get_rag(course_id)
             background_tasks.add_task(pipeline_index_texts, rag, [request.text])
             return InsertResponse(
                 status="success",
@@ -818,7 +852,9 @@ def create_document_routes(
         dependencies=[Depends(combined_auth)],
     )
     async def insert_texts(
-        request: InsertTextsRequest, background_tasks: BackgroundTasks
+        request: InsertTextsRequest, 
+        background_tasks: BackgroundTasks,
+        course_id: str = Query("", description="課程ID")
     ):
         """
         Insert multiple texts into the RAG system.
@@ -837,6 +873,7 @@ def create_document_routes(
             HTTPException: If an error occurs during text processing (500).
         """
         try:
+            rag = await rag_manager.get_rag(course_id)
             background_tasks.add_task(pipeline_index_texts, rag, request.texts)
             return InsertResponse(
                 status="success",
@@ -847,118 +884,119 @@ def create_document_routes(
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 
-    # TODO: deprecated, use /upload instead
-    @router.post(
-        "/file", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
-    )
-    async def insert_file(
-        background_tasks: BackgroundTasks, file: UploadFile = File(...)
-    ):
-        """
-        Insert a file directly into the RAG system.
+    # # TODO: deprecated, use /upload instead
+    # @router.post(
+    #     "/file", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
+    # )
+    # async def insert_file(
+    #     background_tasks: BackgroundTasks,
+    #     file: UploadFile = File(...)
+    # ):
+    #     """
+    #     Insert a file directly into the RAG system.
 
-        This endpoint accepts a file upload and processes it for inclusion in the RAG system.
-        The file is saved temporarily and processed in the background.
+    #     This endpoint accepts a file upload and processes it for inclusion in the RAG system.
+    #     The file is saved temporarily and processed in the background.
 
-        Args:
-            background_tasks: FastAPI BackgroundTasks for async processing
-            file (UploadFile): The file to be processed
+    #     Args:
+    #         background_tasks: FastAPI BackgroundTasks for async processing
+    #         file (UploadFile): The file to be processed
 
-        Returns:
-            InsertResponse: A response object containing the status of the operation.
+    #     Returns:
+    #         InsertResponse: A response object containing the status of the operation.
 
-        Raises:
-            HTTPException: If the file type is not supported (400) or other errors occur (500).
-        """
-        try:
-            if not doc_manager.is_supported_file(file.filename):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported file type. Supported types: {doc_manager.supported_extensions}",
-                )
+    #     Raises:
+    #         HTTPException: If the file type is not supported (400) or other errors occur (500).
+    #     """
+    #     try:
+    #         if not doc_manager.is_supported_file(file.filename):
+    #             raise HTTPException(
+    #                 status_code=400,
+    #                 detail=f"Unsupported file type. Supported types: {doc_manager.supported_extensions}",
+    #             )
 
-            temp_path = await save_temp_file(doc_manager.input_dir, file)
+    #         temp_path = await save_temp_file(doc_manager.input_dir, file)
 
-            # Add to background tasks
-            background_tasks.add_task(pipeline_index_file, rag, temp_path)
+    #         # Add to background tasks
+    #         background_tasks.add_task(pipeline_index_file, rag, temp_path)
 
-            return InsertResponse(
-                status="success",
-                message=f"File '{file.filename}' saved successfully. Processing will continue in background.",
-            )
-        except Exception as e:
-            logger.error(f"Error /documents/file: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise HTTPException(status_code=500, detail=str(e))
+    #         return InsertResponse(
+    #             status="success",
+    #             message=f"File '{file.filename}' saved successfully. Processing will continue in background.",
+    #         )
+    #     except Exception as e:
+    #         logger.error(f"Error /documents/file: {str(e)}")
+    #         logger.error(traceback.format_exc())
+    #         raise HTTPException(status_code=500, detail=str(e))
 
-    # TODO: deprecated, use /upload instead
-    @router.post(
-        "/file_batch",
-        response_model=InsertResponse,
-        dependencies=[Depends(combined_auth)],
-    )
-    async def insert_batch(
-        background_tasks: BackgroundTasks, files: List[UploadFile] = File(...)
-    ):
-        """
-        Process multiple files in batch mode.
+    # # TODO: deprecated, use /upload instead
+    # @router.post(
+    #     "/file_batch",
+    #     response_model=InsertResponse,
+    #     dependencies=[Depends(combined_auth)],
+    # )
+    # async def insert_batch(
+    #     background_tasks: BackgroundTasks, files: List[UploadFile] = File(...)
+    # ):
+    #     """
+    #     Process multiple files in batch mode.
 
-        This endpoint allows uploading and processing multiple files simultaneously.
-        It handles partial successes and provides detailed feedback about failed files.
+    #     This endpoint allows uploading and processing multiple files simultaneously.
+    #     It handles partial successes and provides detailed feedback about failed files.
 
-        Args:
-            background_tasks: FastAPI BackgroundTasks for async processing
-            files (List[UploadFile]): List of files to process
+    #     Args:
+    #         background_tasks: FastAPI BackgroundTasks for async processing
+    #         files (List[UploadFile]): List of files to process
 
-        Returns:
-            InsertResponse: A response object containing:
-                - status: "success", "partial_success", or "failure"
-                - message: Detailed information about the operation results
+    #     Returns:
+    #         InsertResponse: A response object containing:
+    #             - status: "success", "partial_success", or "failure"
+    #             - message: Detailed information about the operation results
 
-        Raises:
-            HTTPException: If an error occurs during processing (500).
-        """
-        try:
-            inserted_count = 0
-            failed_files = []
-            temp_files = []
+    #     Raises:
+    #         HTTPException: If an error occurs during processing (500).
+    #     """
+    #     try:
+    #         inserted_count = 0
+    #         failed_files = []
+    #         temp_files = []
 
-            for file in files:
-                if doc_manager.is_supported_file(file.filename):
-                    # Create a temporary file to save the uploaded content
-                    temp_files.append(await save_temp_file(doc_manager.input_dir, file))
-                    inserted_count += 1
-                else:
-                    failed_files.append(f"{file.filename} (unsupported type)")
+    #         for file in files:
+    #             if doc_manager.is_supported_file(file.filename):
+    #                 # Create a temporary file to save the uploaded content
+    #                 temp_files.append(await save_temp_file(doc_manager.input_dir, file))
+    #                 inserted_count += 1
+    #             else:
+    #                 failed_files.append(f"{file.filename} (unsupported type)")
 
-            if temp_files:
-                background_tasks.add_task(pipeline_index_files, rag, temp_files)
+    #         if temp_files:
+    #             background_tasks.add_task(pipeline_index_files, rag, temp_files)
 
-            # Prepare status message
-            if inserted_count == len(files):
-                status = "success"
-                status_message = f"Successfully inserted all {inserted_count} documents"
-            elif inserted_count > 0:
-                status = "partial_success"
-                status_message = f"Successfully inserted {inserted_count} out of {len(files)} documents"
-                if failed_files:
-                    status_message += f". Failed files: {', '.join(failed_files)}"
-            else:
-                status = "failure"
-                status_message = "No documents were successfully inserted"
-                if failed_files:
-                    status_message += f". Failed files: {', '.join(failed_files)}"
+    #         # Prepare status message
+    #         if inserted_count == len(files):
+    #             status = "success"
+    #             status_message = f"Successfully inserted all {inserted_count} documents"
+    #         elif inserted_count > 0:
+    #             status = "partial_success"
+    #             status_message = f"Successfully inserted {inserted_count} out of {len(files)} documents"
+    #             if failed_files:
+    #                 status_message += f". Failed files: {', '.join(failed_files)}"
+    #         else:
+    #             status = "failure"
+    #             status_message = "No documents were successfully inserted"
+    #             if failed_files:
+    #                 status_message += f". Failed files: {', '.join(failed_files)}"
 
-            return InsertResponse(status=status, message=status_message)
-        except Exception as e:
-            logger.error(f"Error /documents/batch: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise HTTPException(status_code=500, detail=str(e))
+    #         return InsertResponse(status=status, message=status_message)
+    #     except Exception as e:
+    #         logger.error(f"Error /documents/batch: {str(e)}")
+    #         logger.error(traceback.format_exc())
+    #         raise HTTPException(status_code=500, detail=str(e))
 
     @router.delete(
         "", response_model=ClearDocumentsResponse, dependencies=[Depends(combined_auth)]
     )
-    async def clear_documents():
+    async def clear_documents(course_id: str = Query("", description="課程ID")):
         """
         Clear all documents from the RAG system.
 
@@ -1015,6 +1053,7 @@ def create_document_routes(
             )
 
         try:
+            rag = await rag_manager.get_rag(course_id)
             # Use drop method to clear all data
             drop_tasks = []
             storages = [
@@ -1081,12 +1120,13 @@ def create_document_routes(
                     "Starting to delete files in input directory"
                 )
 
-            # Delete all files in input_dir
+            # 刪除特定 courseId 的檔案
             deleted_files_count = 0
             file_errors_count = 0
 
+            prefix = f"{course_id}_"
             for file_path in doc_manager.input_dir.glob("**/*"):
-                if file_path.is_file():
+                if file_path.is_file() and file_path.name.startswith(prefix):
                     try:
                         file_path.unlink()
                         deleted_files_count += 1
@@ -1211,7 +1251,9 @@ def create_document_routes(
     @router.get(
         "", response_model=DocsStatusesResponse, dependencies=[Depends(combined_auth)]
     )
-    async def documents() -> DocsStatusesResponse:
+    async def documents(
+        course_id: str = Query("", description="課程ID")
+    ) -> DocsStatusesResponse:
         """
         Get the status of all documents in the system.
 
@@ -1227,6 +1269,7 @@ def create_document_routes(
             HTTPException: If an error occurs while retrieving document statuses (500).
         """
         try:
+            # Get all documents by status
             statuses = (
                 DocStatus.PENDING,
                 DocStatus.PROCESSING,
@@ -1234,8 +1277,19 @@ def create_document_routes(
                 DocStatus.FAILED,
             )
 
+            rag = await rag_manager.get_rag(course_id)
             tasks = [rag.get_docs_by_status(status) for status in statuses]
             results: List[Dict[str, DocProcessingStatus]] = await asyncio.gather(*tasks)
+
+            # 過濾其他課程的文件
+            filtered_results = []
+            for status_docs in results:
+                filtered_docs = {
+                    doc_id: doc for doc_id, doc in status_docs.items()
+                    if doc.file_path.startswith(f"{course_id}_")
+                }
+                filtered_results.append(filtered_docs)
+            results = filtered_results
 
             response = DocsStatusesResponse()
 
@@ -1273,7 +1327,10 @@ def create_document_routes(
         response_model=ClearCacheResponse,
         dependencies=[Depends(combined_auth)],
     )
-    async def clear_cache(request: ClearCacheRequest):
+    async def clear_cache(
+        request: ClearCacheRequest,
+        course_id: str = Query("", description="課程ID")
+    ):
         """
         Clear cache data from the LLM response cache storage.
 
@@ -1304,6 +1361,7 @@ def create_document_routes(
                 )
 
             # Call the aclear_cache method
+            rag = await rag_manager.get_rag(course_id)
             await rag.aclear_cache(request.modes)
 
             # Prepare success message
@@ -1320,5 +1378,65 @@ def create_document_routes(
             logger.error(f"Error clearing cache: {str(e)}")
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
+
+    @router.delete(
+        "/{doc_id}", response_model=DocActionResponse, dependencies=[Depends(combined_auth)]
+    )
+    async def delete_document(
+        doc_id: str,
+        course_id: str = Query("", description="課程ID")
+    ):
+        """
+        Delete a specific document from the system.
+
+        This endpoint deletes a document with the specified ID from the RAG system.
+        It removes the document from all storage components and deletes the file.
+
+        Args:
+            doc_id (str): The ID of the document to delete
+
+        Returns:
+            DocActionResponse: A response object containing the status and message.
+                - status="success": Document was successfully deleted
+                - status="not_found": Document with the specified ID was not found
+                - status="fail": Error occurred while deleting the document
+
+        Raises:
+            HTTPException: If a serious error occurs during the deletion process (500)
+        """
+        try:
+            # 獲取文檔狀態以找到文件名
+            rag = await rag_manager.get_rag(course_id)
+            print("rag.doc_status: ", rag.doc_status)
+            doc_status = await rag.doc_status.get_by_id(doc_id)
+            if not doc_status:
+                return DocActionResponse(
+                    status="not_found",
+                    message=f"Document {doc_id} not found"
+                )
+            
+            await rag.adelete_by_doc_id(doc_id)
+            
+            # 獲取文件名
+            file_path = doc_status.get("file_path")
+            if file_path:
+                # 構建完整的文件路徑
+                full_path = doc_manager.input_dir / file_path
+                # 如果文件存在，則刪除
+                if full_path.exists():
+                    full_path.unlink()
+                    logger.info(f"Deleted file: {full_path}")
+
+            return DocActionResponse(
+                status="success",
+                message=f"Document {doc_id} successfully deleted"
+            )
+        except Exception as e:
+            logger.error(f"Error in delete_document: {str(e)}")
+            logger.error(traceback.format_exc())
+            return DocActionResponse(
+                status="fail",
+                message=f"Error deleting document {doc_id}: {str(e)}"
+            )
 
     return router

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { useParams } from "react-router-dom";
 import ThemeProvider from '@/components/ThemeProvider'
 import TabVisibilityProvider from '@/contexts/TabVisibilityProvider'
 import ApiKeyAlert from '@/components/ApiKeyAlert'
@@ -17,8 +18,16 @@ import RetrievalTesting from '@/features/RetrievalTesting'
 import ApiSite from '@/features/ApiSite'
 
 import { Tabs, TabsContent } from '@/components/ui/Tabs'
+// import { useGraphStore } from '@/stores/graph'
+import { getCourses } from '@/api/lightrag';
+
 
 function App() {
+  const { courseId } = useParams();
+  // console.log("App courseId: ", courseId)
+  // const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  // console.log(backendUrl);
+  
   const message = useBackendState.use.message()
   const enableHealthCheck = useSettingsStore.use.enableHealthCheck()
   const currentTab = useSettingsStore.use.currentTab()
@@ -32,6 +41,32 @@ function App() {
       useBackendState.getState().clear()
     }
   }, [])
+
+  // 如果有 courseId，設置為查詢標籤
+  useEffect(() => {
+    // console.log("test");
+    if (courseId) {
+      // 獲取課程列表並檢查
+      const checkCourse = async () => {
+        try {
+          const courses = await getCourses();
+          // console.log("courses: ", courses);
+          if (courses.includes(courseId)) {
+            console.log("courseId in courses.json:", courseId);
+          } else {
+            console.log("courseId not in courses.json:", courseId);
+          }
+        } catch (error) {
+          console.error('獲取課程列表失敗:', error);
+        }
+      };
+      checkCourse();
+      useSettingsStore.getState().setQueryLabel(courseId);
+    }
+    else {
+      useSettingsStore.getState().setQueryLabel('*');
+    }
+  }, [courseId]);
 
   // Health check - can be disabled
   useEffect(() => {
@@ -68,6 +103,8 @@ function App() {
         // Get version info
         const token = localStorage.getItem('LIGHTRAG-API-TOKEN');
         const status = await getAuthStatus();
+        // console.log("auth_configured:", status.auth_configured);
+        // console.log("access_token:", status.access_token);
 
         // If auth is not configured and a new token is returned, use the new token
         if (!status.auth_configured && status.access_token) {
@@ -165,7 +202,7 @@ function App() {
                   <DocumentManager />
                 </TabsContent>
                 <TabsContent value="knowledge-graph" className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
-                  <GraphViewer />
+                  <GraphViewer courseId={courseId || ""}/>
                 </TabsContent>
                 <TabsContent value="retrieval" className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
                   <RetrievalTesting />

@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { createSelectors } from '@/lib/utils'
 import { defaultQueryLabel } from '@/lib/constants'
 import { Message, QueryRequest } from '@/api/lightrag'
+import courses from '@/data/courses.json'
 
 type Theme = 'dark' | 'light' | 'system'
 type Language = 'en' | 'zh' | 'fr' | 'ar'
@@ -67,6 +68,13 @@ interface SettingsState {
 
   currentTab: Tab
   setCurrentTab: (tab: Tab) => void
+
+  // Course list settings
+  courseList: string[]
+  setCourseList: (courseList: string[]) => void
+  addCourse: (courseId: string) => void
+  removeCourse: (courseId: string) => void
+  clearCourses: () => void
 }
 
 const useSettingsStoreBase = create<SettingsState>()(
@@ -118,6 +126,31 @@ const useSettingsStoreBase = create<SettingsState>()(
         ll_keywords: []
       },
 
+      // Course list settings
+      courseList: courses.courseIds,
+      setCourseList: (courseList: string[]) => {
+        set({ courseList })
+        // 更新 JSON 文件
+        courses.courseIds = courseList
+      },
+      addCourse: (courseId: string) => set((state) => {
+        if (!state.courseList.includes(courseId)) {
+          const newCourseList = [...state.courseList, courseId]
+          courses.courseIds = newCourseList
+          return { courseList: newCourseList }
+        }
+        return state
+      }),
+      removeCourse: (courseId: string) => set((state) => {
+        const newCourseList = state.courseList.filter(id => id !== courseId)
+        courses.courseIds = newCourseList
+        return { courseList: newCourseList }
+      }),
+      clearCourses: () => {
+        set({ courseList: [] })
+        courses.courseIds = []
+      },
+
       setTheme: (theme: Theme) => set({ theme }),
 
       setLanguage: (language: Language) => {
@@ -167,7 +200,7 @@ const useSettingsStoreBase = create<SettingsState>()(
     {
       name: 'settings-storage',
       storage: createJSONStorage(() => localStorage),
-      version: 11,
+      version: 12,
       migrate: (state: any, version: number) => {
         if (version < 2) {
           state.showEdgeLabel = false
@@ -220,6 +253,9 @@ const useSettingsStoreBase = create<SettingsState>()(
         if (version < 11) {
           state.minEdgeSize = 1
           state.maxEdgeSize = 1
+        }
+        if (version < 12) {
+          state.courseList = courses.courseIds
         }
         return state
       }

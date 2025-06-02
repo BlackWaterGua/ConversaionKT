@@ -98,7 +98,7 @@ interface GraphState {
   setRawGraph: (rawGraph: RawGraph | null) => void
   setSigmaGraph: (sigmaGraph: DirectedGraph | null) => void
   setAllDatabaseLabels: (labels: string[]) => void
-  fetchAllDatabaseLabels: () => Promise<void>
+  fetchAllDatabaseLabels: (courseId: string) => Promise<void>
   setIsFetching: (isFetching: boolean) => void
 
   // 搜索引擎方法
@@ -185,10 +185,10 @@ const useGraphStoreBase = create<GraphState>()((set) => ({
 
   setAllDatabaseLabels: (labels: string[]) => set({ allDatabaseLabels: labels }),
 
-  fetchAllDatabaseLabels: async () => {
+  fetchAllDatabaseLabels: async (courseId: string = "") => {
     try {
       console.log('Fetching all database labels...');
-      const labels = await getGraphLabels();
+      const labels = await getGraphLabels(courseId);
       set({ allDatabaseLabels: ['*', ...labels] });
       return;
     } catch (error) {

@@ -1,4 +1,4 @@
-import { HashRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
+import { HashRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/state'
 import { navigationService } from '@/services/navigation'
@@ -10,6 +10,8 @@ import ThemeProvider from '@/components/ThemeProvider'
 const AppContent = () => {
   const [initializing, setInitializing] = useState(true)
   const { isAuthenticated } = useAuthStore()
+  // const { courseId } = useParams();
+  // console.log("courseId from router:", courseId);
   const navigate = useNavigate()
 
   // Set navigate function for navigation service
@@ -50,7 +52,7 @@ const AppContent = () => {
 
   // Redirect effect for protected routes
   useEffect(() => {
-    if (!initializing && !isAuthenticated) {
+    if (!initializing && !isAuthenticated && !import.meta.env.VITE_DISABLE_AUTH) {
       const currentPath = window.location.hash.slice(1);
       if (currentPath !== '/login') {
         console.log('Not authenticated, redirecting to login');
@@ -68,8 +70,10 @@ const AppContent = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
-        path="/*"
-        element={isAuthenticated ? <App /> : null}
+        // path="/*"
+        path="/:courseId?"
+        // element={isAuthenticated ? <App /> : null}
+        element={<App />}
       />
     </Routes>
   )

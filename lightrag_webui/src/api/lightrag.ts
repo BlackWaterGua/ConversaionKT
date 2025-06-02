@@ -227,14 +227,15 @@ axiosInstance.interceptors.response.use(
 export const queryGraphs = async (
   label: string,
   maxDepth: number,
-  maxNodes: number
+  maxNodes: number,
+  courseId: string = ""
 ): Promise<LightragGraphType> => {
-  const response = await axiosInstance.get(`/graphs?label=${encodeURIComponent(label)}&max_depth=${maxDepth}&max_nodes=${maxNodes}`)
+  const response = await axiosInstance.get(`/graphs?label=${encodeURIComponent(label)}&max_depth=${maxDepth}&max_nodes=${maxNodes}&course_id=${courseId}`)
   return response.data
 }
 
-export const getGraphLabels = async (): Promise<string[]> => {
-  const response = await axiosInstance.get('/graph/label/list')
+export const getGraphLabels = async (courseId: string = ""): Promise<string[]> => {
+  const response = await axiosInstance.get(`/graph/label/list?course_id=${courseId}`)
   return response.data
 }
 
@@ -252,13 +253,13 @@ export const checkHealth = async (): Promise<
   }
 }
 
-export const getDocuments = async (): Promise<DocsStatusesResponse> => {
-  const response = await axiosInstance.get('/documents')
+export const getDocuments = async (courseId: string = ""): Promise<DocsStatusesResponse> => {
+  const response = await axiosInstance.get(`/documents?course_id=${courseId}`)
   return response.data
 }
 
-export const scanNewDocuments = async (): Promise<{ status: string }> => {
-  const response = await axiosInstance.post('/documents/scan')
+export const scanNewDocuments = async (courseId: string = ""): Promise<{ status: string }> => {
+  const response = await axiosInstance.post(`/documents/scan?course_id=${courseId}`)
   return response.data
 }
 
@@ -267,20 +268,21 @@ export const getDocumentsScanProgress = async (): Promise<LightragDocumentsScanP
   return response.data
 }
 
-export const queryText = async (request: QueryRequest): Promise<QueryResponse> => {
-  const response = await axiosInstance.post('/query', request)
+export const queryText = async (request: QueryRequest, courseId: string = ""): Promise<QueryResponse> => {
+  const response = await axiosInstance.post(`/query?course_id=${courseId}`, request)
   return response.data
 }
 
 export const queryTextStream = async (
   request: QueryRequest,
+  courseId: string = "",
   onChunk: (chunk: string) => void,
   onError?: (error: string) => void
 ) => {
   try {
     let buffer = ''
     await axiosInstance
-      .post('/query/stream', request, {
+      .post(`/query/stream?course_id=${courseId}`, request, {
         responseType: 'text',
         headers: {
           Accept: 'application/x-ndjson'
@@ -337,24 +339,25 @@ export const queryTextStream = async (
   }
 }
 
-export const insertText = async (text: string): Promise<DocActionResponse> => {
-  const response = await axiosInstance.post('/documents/text', { text })
+export const insertText = async (text: string, courseId: string = ""): Promise<DocActionResponse> => {
+  const response = await axiosInstance.post(`/documents/text?course_id=${courseId}`, { text })
   return response.data
 }
 
-export const insertTexts = async (texts: string[]): Promise<DocActionResponse> => {
-  const response = await axiosInstance.post('/documents/texts', { texts })
+export const insertTexts = async (texts: string[], courseId: string = ""): Promise<DocActionResponse> => {
+  const response = await axiosInstance.post(`/documents/texts?course_id=${courseId}`, { texts })
   return response.data
 }
 
 export const uploadDocument = async (
   file: File,
+  courseId: string = "",
   onUploadProgress?: (percentCompleted: number) => void
 ): Promise<DocActionResponse> => {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await axiosInstance.post('/documents/upload', formData, {
+  const response = await axiosInstance.post(`/documents/upload?course_id=${courseId}`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     },
@@ -372,27 +375,28 @@ export const uploadDocument = async (
 
 export const batchUploadDocuments = async (
   files: File[],
+  courseId: string = "",
   onUploadProgress?: (fileName: string, percentCompleted: number) => void
 ): Promise<DocActionResponse[]> => {
   return await Promise.all(
     files.map(async (file) => {
-      return await uploadDocument(file, (percentCompleted) => {
+      return await uploadDocument(file, courseId, (percentCompleted) => {
         onUploadProgress?.(file.name, percentCompleted)
       })
     })
   )
 }
 
-export const clearDocuments = async (): Promise<DocActionResponse> => {
-  const response = await axiosInstance.delete('/documents')
+export const clearDocuments = async (courseId: string = ""): Promise<DocActionResponse> => {
+  const response = await axiosInstance.delete(`/documents/clear?course_id=${courseId}`)
   return response.data
 }
 
-export const clearCache = async (modes?: string[]): Promise<{
+export const clearCache = async (modes?: string[], courseId: string = ""): Promise<{
   status: 'success' | 'fail'
   message: string
 }> => {
-  const response = await axiosInstance.post('/documents/clear_cache', { modes })
+  const response = await axiosInstance.post(`/documents/clear_cache?course_id=${courseId}`, { modes })
   return response.data
 }
 
@@ -471,3 +475,13 @@ export const loginToServer = async (username: string, password: string): Promise
 
   return response.data;
 }
+
+export const deleteDocument = async (docId: string, courseId: string = ""): Promise<DocActionResponse> => {
+  const response = await axiosInstance.delete(`/documents/${docId}?course_id=${courseId}`)
+  return response.data
+}
+
+export const getCourses = async (): Promise<string[]> => {
+  const response = await axiosInstance.get('/courses');
+  return response.data;
+};

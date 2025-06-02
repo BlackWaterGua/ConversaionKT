@@ -25,6 +25,7 @@ from .utils import (
     CacheData,
     statistic_data,
     get_conversation_turns,
+    csv_string_to_list,
 )
 from .base import (
     BaseGraphStorage,
@@ -1149,6 +1150,20 @@ async def _build_query_context(
             text_chunks_db,
             query_param,
         )
+        if entities_context:
+            header = None
+            list_entities = csv_string_to_list(entities_context.strip())
+            if list_entities:
+                header = list_entities[0]
+                list_entities = list_entities[1:]
+            if list_entities:
+                list_entities = ["<||>".join(item[1:]) for item in list_entities if item]
+            trans_entities = ["<||>".join(header)]
+            for i, item in enumerate(list_entities, start=1):
+                trans_entities.append(f"{i}<||>{item}")
+            trans_entities = "\n".join(trans_entities)
+            entities_context = trans_entities
+
     elif query_param.mode == "global":
         entities_context, relations_context, text_units_context = await _get_edge_data(
             hl_keywords,
@@ -1157,6 +1172,19 @@ async def _build_query_context(
             text_chunks_db,
             query_param,
         )
+        if entities_context:
+            header = None
+            list_entities = csv_string_to_list(entities_context.strip())
+            if list_entities:
+                header = list_entities[0]
+                list_entities = list_entities[1:]
+            if list_entities:
+                list_entities = ["<||>".join(item[1:]) for item in list_entities if item]
+            trans_entities = ["<||>".join(header)]
+            for i, item in enumerate(list_entities, start=1):
+                trans_entities.append(f"{i}<||>{item}")
+            trans_entities = "\n".join(trans_entities)
+            entities_context = trans_entities
     else:  # hybrid mode
         ll_data, hl_data = await asyncio.gather(
             _get_node_data(
@@ -1197,19 +1225,19 @@ async def _build_query_context(
         return None
 
     result = f"""
-    -----Entities-----
-    ```csv
-    {entities_context}
-    ```
-    -----Relationships-----
-    ```csv
-    {relations_context}
-    ```
-    -----Sources-----
-    ```csv
-    {text_units_context}
-    ```
-    """.strip()
+-----Entities-----
+```csv
+{entities_context}
+```
+-----Relationships-----
+```csv
+{relations_context}
+```
+-----Sources-----
+```csv
+{text_units_context}
+```
+""".strip()
     return result
 
 

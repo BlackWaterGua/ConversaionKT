@@ -167,7 +167,7 @@ export const GraphSearchInput = ({
 /**
  * Component that display the search.
  */
-const GraphSearch: FC<GraphSearchInputProps & GraphSearchContextProviderProps> = ({ ...props }) => {
+const GraphSearch: FC<GraphSearchInputProps & GraphSearchContextProviderProps & { courseId?: string }> = ({ courseId = "", ...props }) => {
   return <GraphSearchInput {...props} />
 }
 

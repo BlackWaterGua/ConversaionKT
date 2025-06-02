@@ -482,9 +482,9 @@ def process_combine_contexts(hl: str, ll: str):
         return ""
 
     if list_hl:
-        list_hl = [",".join(item[1:]) for item in list_hl if item]
+        list_hl = ["<||>".join(item[1:]) for item in list_hl if item]
     if list_ll:
-        list_ll = [",".join(item[1:]) for item in list_ll if item]
+        list_ll = ["<||>".join(item[1:]) for item in list_ll if item]
 
     combined_sources = []
     seen = set()
@@ -494,10 +494,10 @@ def process_combine_contexts(hl: str, ll: str):
             combined_sources.append(item)
             seen.add(item)
 
-    combined_sources_result = [",\t".join(header)]
+    combined_sources_result = ["<||>".join(header)]
 
     for i, item in enumerate(combined_sources, start=1):
-        combined_sources_result.append(f"{i},\t{item}")
+        combined_sources_result.append(f"{i}<||>{item}")
 
     combined_sources_result = "\n".join(combined_sources_result)
 

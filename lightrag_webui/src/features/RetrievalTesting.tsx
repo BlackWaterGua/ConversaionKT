@@ -9,9 +9,11 @@ import QuerySettings from '@/components/retrieval/QuerySettings'
 import { ChatMessage, MessageWithError } from '@/components/retrieval/ChatMessage'
 import { EraserIcon, SendIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useParams } from 'react-router-dom'
 
 export default function RetrievalTesting() {
   const { t } = useTranslation()
+  const courseId = useParams().courseId || ""
   const [messages, setMessages] = useState<MessageWithError[]>(
     () => useSettingsStore.getState().retrievalHistory || []
   )
@@ -76,7 +78,7 @@ export default function RetrievalTesting() {
         // Run query
         if (state.querySettings.stream) {
           let errorMessage = ''
-          await queryTextStream(queryParams, updateAssistantMessage, (error) => {
+          await queryTextStream(queryParams, courseId, updateAssistantMessage, (error) => {
             errorMessage += error
           })
           if (errorMessage) {
@@ -86,7 +88,7 @@ export default function RetrievalTesting() {
             updateAssistantMessage(errorMessage, true)
           }
         } else {
-          const response = await queryText(queryParams)
+          const response = await queryText(queryParams, courseId)
           updateAssistantMessage(response.response)
         }
       } catch (err) {

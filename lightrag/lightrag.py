@@ -527,6 +527,18 @@ class LightRAG:
             node_label, max_depth, max_nodes
         )
 
+    async def get_node_edges(self, node_id: str) -> list[tuple[str, str]] | None:
+        """
+        Get all edges for a particular node.
+        
+        Args:
+            node_id: ID of the node to get edges for
+            
+        Returns:
+            List of (source_label, target_label) tuples representing edges
+        """
+        return await self.chunk_entity_relation_graph.get_node_edges(node_id)
+
     def _get_storage_class(self, storage_name: str) -> Callable[..., Any]:
         import_path = STORAGES[storage_name]
         storage_class = lazy_external_import(import_path, storage_name)

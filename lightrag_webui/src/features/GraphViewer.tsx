@@ -26,6 +26,7 @@ import { useGraphStore } from '@/stores/graph'
 
 import '@react-sigma/core/lib/style.css'
 import '@react-sigma/graph-search/lib/style.css'
+// import { useParams } from 'react-router-dom'
 
 // Sigma settings
 const defaultSigmaSettings: Partial<SigmaSettings> = {
@@ -106,7 +107,9 @@ const GraphEvents = () => {
   return null
 }
 
-const GraphViewer = () => {
+const GraphViewer = ({ courseId = "" }: { courseId?: string }) => {
+  // const { courseId } = useParams();
+  // console.log("GraphViewer courseId: ", courseId)
   const [sigmaSettings, setSigmaSettings] = useState(defaultSigmaSettings)
   const sigmaRef = useRef<any>(null)
 
@@ -120,10 +123,18 @@ const GraphViewer = () => {
   const enableNodeDrag = useSettingsStore.use.enableNodeDrag()
   const showLegend = useSettingsStore.use.showLegend()
 
+  // // 如果有 courseId，設置為查詢標籤
+  // useEffect(() => {
+  //   if (courseId) {
+  //     useSettingsStore.getState().setQueryLabel(courseId);
+  //   }
+  // }, [courseId]);
+
   // Initialize sigma settings once on component mount
   // All dynamic settings will be updated in GraphControl using useSetSettings
   useEffect(() => {
     setSigmaSettings(defaultSigmaSettings)
+    // console.log("graphId: ",graphId)
     console.log('Initialized sigma settings')
   }, [])
 
@@ -177,19 +188,20 @@ const GraphViewer = () => {
         className="!bg-background !size-full overflow-hidden"
         ref={sigmaRef}
       >
-        <GraphControl />
+        <GraphControl courseId={courseId} />
 
         {enableNodeDrag && <GraphEvents />}
 
         <FocusOnNode node={autoFocusedNode} move={moveToSelectedNode} />
 
         <div className="absolute top-2 left-2 flex items-start gap-2">
-          <GraphLabels />
+          <GraphLabels courseId={courseId} />
           {showNodeSearchBar && (
             <GraphSearch
               value={searchInitSelectedNode}
               onFocus={onSearchFocus}
               onChange={onSearchSelect}
+              courseId={courseId}
             />
           )}
         </div>

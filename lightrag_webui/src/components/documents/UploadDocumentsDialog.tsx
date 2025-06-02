@@ -19,9 +19,10 @@ import { useTranslation } from 'react-i18next'
 
 interface UploadDocumentsDialogProps {
   onDocumentsUploaded?: () => Promise<void>
+  courseId?: string
 }
 
-export default function UploadDocumentsDialog({ onDocumentsUploaded }: UploadDocumentsDialogProps) {
+export default function UploadDocumentsDialog({ onDocumentsUploaded, courseId }: UploadDocumentsDialogProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -86,7 +87,7 @@ export default function UploadDocumentsDialog({ onDocumentsUploaded }: UploadDoc
                 [file.name]: 0
               }))
 
-              const result = await uploadDocument(file, (percentCompleted: number) => {
+              const result = await uploadDocument(file, courseId, (percentCompleted: number) => {
                 console.debug(t('documentPanel.uploadDocuments.single.uploading', { name: file.name, percent: percentCompleted }))
                 setProgresses((pre) => ({
                   ...pre,
@@ -167,7 +168,7 @@ export default function UploadDocumentsDialog({ onDocumentsUploaded }: UploadDoc
         setIsUploading(false)
       }
     },
-    [setIsUploading, setProgresses, setFileErrors, t, onDocumentsUploaded]
+    [setIsUploading, setProgresses, setFileErrors, t, onDocumentsUploaded, courseId]
   )
 
   return (

@@ -15,8 +15,9 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import EmptyCard from '@/components/ui/EmptyCard'
 import UploadDocumentsDialog from '@/components/documents/UploadDocumentsDialog'
 import ClearDocumentsDialog from '@/components/documents/ClearDocumentsDialog'
+import { useParams } from 'react-router-dom'
 
-import { getDocuments, scanNewDocuments, DocsStatusesResponse, DocStatus, DocStatusResponse } from '@/api/lightrag'
+import { getDocuments, scanNewDocuments, DocsStatusesResponse, DocStatus, DocStatusResponse, deleteDocument } from '@/api/lightrag'
 import { errorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useBackendState } from '@/stores/state'
@@ -145,6 +146,7 @@ export default function DocumentManager() {
   const currentTab = useSettingsStore.use.currentTab()
   const showFileName = useSettingsStore.use.showFileName()
   const setShowFileName = useSettingsStore.use.setShowFileName()
+  const courseId = useParams().courseId || ""
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>('updated_at')
@@ -324,7 +326,7 @@ export default function DocumentManager() {
 
   const fetchDocuments = useCallback(async () => {
     try {
-      const docs = await getDocuments()
+      const docs = await getDocuments(courseId)
 
       // Get new status counts (treat null as all zeros)
       const newStatusCounts = {
@@ -364,7 +366,7 @@ export default function DocumentManager() {
     } catch (err) {
       toast.error(t('documentPanel.documentManager.errors.loadFailed', { error: errorMessage(err) }))
     }
-  }, [setDocs, t])
+  }, [setDocs, t, courseId])
 
   // Fetch documents when the tab becomes visible
   useEffect(() => {
@@ -375,12 +377,12 @@ export default function DocumentManager() {
 
   const scanDocuments = useCallback(async () => {
     try {
-      const { status } = await scanNewDocuments()
+      const { status } = await scanNewDocuments(courseId)
       toast.message(status)
     } catch (err) {
       toast.error(t('documentPanel.documentManager.errors.scanFailed', { error: errorMessage(err) }))
     }
-  }, [t])
+  }, [t, courseId])
 
   // Set up polling when the documents tab is active and health is good
   useEffect(() => {
@@ -403,6 +405,22 @@ export default function DocumentManager() {
   useEffect(() => {
     // This effect ensures the component re-renders when sort state changes
   }, [sortField, sortDirection]);
+
+  const handleDeleteDocument = async (docId: string) => {
+    try {
+      const response = await deleteDocument(docId, courseId)
+      if (response.status === 'success') {
+        toast.success(t('Document deleted successfully'))
+        // 重新獲取文檔列表
+        await fetchDocuments()
+      } else {
+        toast.error(response.message)
+      }
+    } catch (error) {
+      toast.error(t('Failed to delete document'))
+      console.error('Error deleting document:', error)
+    }
+  }
 
   return (
     <Card className="!rounded-none !overflow-hidden flex flex-col h-full min-h-0">
@@ -435,8 +453,8 @@ export default function DocumentManager() {
             </Button>
           </div>
           <div className="flex-1" />
-          <ClearDocumentsDialog onDocumentsCleared={fetchDocuments} />
-          <UploadDocumentsDialog onDocumentsUploaded={fetchDocuments} />
+          <ClearDocumentsDialog onDocumentsCleared={fetchDocuments} courseId={courseId} />
+          <UploadDocumentsDialog onDocumentsUploaded={fetchDocuments} courseId={courseId} />
           <PipelineStatusDialog
             open={showPipelineStatus}
             onOpenChange={setShowPipelineStatus}
@@ -582,6 +600,7 @@ export default function DocumentManager() {
                             )}
                           </div>
                         </TableHead>
+                        <TableHead>{t('Delete Specific Document')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody className="text-sm overflow-auto">
@@ -644,6 +663,16 @@ export default function DocumentManager() {
                             </TableCell>
                             <TableCell className="truncate">
                               {new Date(doc.updated_at).toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteDocument(doc.id)}
+                                disabled={doc.status === 'processing'}
+                              >
+                                {t('Delete')}
+                              </Button>
                             </TableCell>
                           </TableRow>
                         )))

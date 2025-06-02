@@ -36,9 +36,10 @@ const Label = ({
 
 interface ClearDocumentsDialogProps {
   onDocumentsCleared?: () => Promise<void>
+  courseId?: string
 }
 
-export default function ClearDocumentsDialog({ onDocumentsCleared }: ClearDocumentsDialogProps) {
+export default function ClearDocumentsDialog({ onDocumentsCleared, courseId = "" }: ClearDocumentsDialogProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [confirmText, setConfirmText] = useState('')
@@ -57,7 +58,7 @@ export default function ClearDocumentsDialog({ onDocumentsCleared }: ClearDocume
     if (!isConfirmEnabled) return
 
     try {
-      const result = await clearDocuments()
+      const result = await clearDocuments(courseId)
 
       if (result.status !== 'success') {
         toast.error(t('documentPanel.clearDocuments.failed', { message: result.message }))
@@ -69,7 +70,7 @@ export default function ClearDocumentsDialog({ onDocumentsCleared }: ClearDocume
 
       if (clearCacheOption) {
         try {
-          await clearCache()
+          await clearCache(undefined, courseId)
           toast.success(t('documentPanel.clearDocuments.cacheCleared'))
         } catch (cacheErr) {
           toast.error(t('documentPanel.clearDocuments.cacheClearFailed', { error: errorMessage(cacheErr) }))
@@ -87,7 +88,7 @@ export default function ClearDocumentsDialog({ onDocumentsCleared }: ClearDocume
       toast.error(t('documentPanel.clearDocuments.error', { error: errorMessage(err) }))
       setConfirmText('')
     }
-  }, [isConfirmEnabled, clearCacheOption, setOpen, t, onDocumentsCleared])
+  }, [isConfirmEnabled, clearCacheOption, setOpen, t, onDocumentsCleared, courseId])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

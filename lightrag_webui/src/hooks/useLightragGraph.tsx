@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { queryGraphs } from '@/api/lightrag'
 import { useBackendState } from '@/stores/state'
 import { useSettingsStore } from '@/stores/settings'
+import { useParams } from "react-router-dom";
 
 import seedrandom from 'seedrandom'
 
@@ -105,7 +106,7 @@ export type EdgeType = {
   hidden?: boolean
 }
 
-const fetchGraph = async (label: string, maxDepth: number, maxNodes: number) => {
+const fetchGraph = async (label: string, maxDepth: number, maxNodes: number, courseId: string = "") => {
   let rawData: any = null;
 
   // Check if we need to fetch all database labels first
@@ -113,7 +114,7 @@ const fetchGraph = async (label: string, maxDepth: number, maxNodes: number) => 
   if (!lastSuccessfulQueryLabel) {
     console.log('Last successful queryLabel is empty');
     try {
-      await useGraphStore.getState().fetchAllDatabaseLabels();
+      await useGraphStore.getState().fetchAllDatabaseLabels(courseId);
     } catch (e) {
       console.error('Failed to fetch all database labels:', e);
       // Continue with graph fetch even if labels fetch fails
@@ -125,7 +126,7 @@ const fetchGraph = async (label: string, maxDepth: number, maxNodes: number) => 
 
   try {
     console.log(`Fetching graph label: ${queryLabel}, depth: ${maxDepth}, nodes: ${maxNodes}`);
-    rawData = await queryGraphs(queryLabel, maxDepth, maxNodes);
+    rawData = await queryGraphs(queryLabel, maxDepth, maxNodes, courseId);
   } catch (e) {
     useBackendState.getState().setErrorMessage(errorMessage(e), 'Query Graphs Error!');
     return null;
@@ -281,6 +282,7 @@ const createSigmaGraph = (rawGraph: RawGraph | null) => {
 
 const useLightrangeGraph = () => {
   const { t } = useTranslation()
+  const { courseId } = useParams();
   const queryLabel = useSettingsStore.use.queryLabel()
   const rawGraph = useGraphStore.use.rawGraph()
   const sigmaGraph = useGraphStore.use.sigmaGraph()
@@ -367,7 +369,7 @@ const useLightrangeGraph = () => {
 
       // 1. If query label is not empty, use fetchGraph
       if (currentQueryLabel) {
-        dataPromise = fetchGraph(currentQueryLabel, currentMaxQueryDepth, currentMaxNodes);
+        dataPromise = fetchGraph(currentQueryLabel, currentMaxQueryDepth, currentMaxNodes, courseId);
       } else {
         // 2. If query label is empty, set data to null
         console.log('Query label is empty, show empty graph')
@@ -422,12 +424,11 @@ const useLightrangeGraph = () => {
           const errorMessage = useBackendState.getState().message;
           const isAuthError = errorMessage && errorMessage.includes('Authentication required');
 
-          // Only clear queryLabel if it's not an auth error and current label is not empty
-          if (!isAuthError && currentQueryLabel) {
-            useSettingsStore.getState().setQueryLabel('');
-          }
-
           // Only clear last successful query label if it's not an auth error
+          // // Only clear queryLabel if it's not an auth error and current label is not empty
+          // if (!isAuthError && currentQueryLabel) {
+          //   useSettingsStore.getState().setQueryLabel('');
+          // }
           if (!isAuthError) {
             state.setLastSuccessfulQueryLabel('');
           } else {
@@ -474,7 +475,7 @@ const useLightrangeGraph = () => {
         state.setLastSuccessfulQueryLabel('') // Clear last successful query label on error
       })
     }
-  }, [queryLabel, maxQueryDepth, maxNodes, isFetching, t])
+  }, [queryLabel, maxQueryDepth, maxNodes, isFetching, t, courseId])
 
   // Handle node expansion
   useEffect(() => {
@@ -497,7 +498,7 @@ const useLightrangeGraph = () => {
         }
 
         // Fetch the extended subgraph with depth 2
-        const extendedGraph = await queryGraphs(label, 2, 1000);
+        const extendedGraph = await queryGraphs(label, 2, 1000, courseId);
 
         if (!extendedGraph || !extendedGraph.nodes || !extendedGraph.edges) {
           console.error('Failed to fetch extended graph');
